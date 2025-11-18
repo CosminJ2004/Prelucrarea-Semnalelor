@@ -1,23 +1,20 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-# --- 1. SETUP SI INCARCARE DATE ---
-FS = 1 / 3600  # Fs = 1 / 3600 secunde
+
+FS = 1 / 3600 
 FILE_PATH = r"D:\Prelucrarea-Semnalelor\lab5\Train.csv"
 
-try:
-    x_raw = np.genfromtxt(FILE_PATH, delimiter=",", skip_header=1, usecols=2)
-except FileNotFoundError:
-    print(f"EROARE: Fisierul '{FILE_PATH}' nu a fost gasit.")
-    exit()
 
-# Prelucrare
+x_raw = np.genfromtxt(FILE_PATH, delimiter=",", skip_header=1, usecols=2)
+
+
 x = x_raw[~np.isnan(x_raw)]
 N = len(x)
 x_mean = np.mean(x)
 x_centered = x - x_mean 
 
-# Functie FFT
+
 def compute_fft_spectrum(signal):
     N_sig = len(signal)
     X = np.fft.fft(signal)
@@ -36,7 +33,7 @@ print("\n--- (c) Frecventa Maxima ---")
 F_max = FS / 2
 print(f"Frecventa maxima (Nyquist): {F_max:.6e} Hz")
 
-# Calcul FFT pe semnalul centrat
+
 X, X_half_centered, f = compute_fft_spectrum(x_centered)
 
 print("\n--- (d) Calcul FFT si Plot Spectru ---")
@@ -51,7 +48,7 @@ plt.show()
 print("-> Plot FFT realizat.")
 
 print("\n--- (e) Componenta Continua (Plot) ---")
-# Setari pentru plot comparativ
+
 N_seg = 720  
 i_start = 1008
 i_stop = i_start + N_seg
@@ -75,7 +72,7 @@ plt.show()
 print("-> Plot comparativ DC realizat.")
 
 print("\n--- (f) Frecvente Principale ---")
-# Identificare 4 varfuri
+
 top_indices_raw = np.argsort(X_half_centered)[-4:]
 top_indices = top_indices_raw[np.argsort(f[top_indices_raw])]
 top_frequencies = f[top_indices]
@@ -99,15 +96,13 @@ plt.xlabel("Timp [Zile]")
 plt.ylabel("Numar de masini")
 plt.grid(True)
 plt.show()
-print("-> Plot 1 Luna realizat.")
 
-print("\n--- (h) Metoda Determinare Ziua de Inceput ---")
-print("Metoda: Corelatie Incrucisata cu un sablon saptamanal (5 zile sus, 2 zile jos). Varful corelatiei indica decalajul fata de inceputul saptamanii.")
+
 
 print("\n--- (i) Filtrare Semnal (Plot) ---")
-F_cut = 3.0 * 1e-5  # Filtru trece-jos (Low-Pass)
+F_cut = 3.0 * 1e-5 
 
-# 1. Filtrare in domeniu frecventa
+
 X_filtered = np.copy(X)
 N_full = len(X)
 f_full = np.fft.fftfreq(N_full, d=1/FS) 
@@ -128,4 +123,3 @@ plt.ylabel("Numar de masini")
 plt.legend()
 plt.grid(True)
 plt.show()
-print("-> Plot Semnal Filtrat realizat.")
