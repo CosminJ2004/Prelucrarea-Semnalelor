@@ -64,44 +64,35 @@ np.random.seed(0)
 
 harta_culori = plt.colormaps["gray"]
 
-# Incarcare imagine raton (folosind noua denumire)
 imagine_curata = datasets.face(gray=True) 
 H, W = imagine_curata.shape
 
-# 3. ADĂUGAREA ZGOMOTULUI
 amplitudine_zgomot = 200
 zgomot = np.random.randint(-amplitudine_zgomot, high=amplitudine_zgomot + 1, size=np.shape(imagine_curata))
 imagine_zgomotoasa = imagine_curata + zgomot
 
-# 4. VIZUALIZARE INITIALA
 plt.imshow(imagine_curata, cmap=harta_culori)
 plt.savefig(f"{cale_grafice}/Initial_Clean_Face.pdf", format="pdf")
 plt.show()
 
-# --- 5. ANALIZA SNR INAINTE DE FILTRARE ---
-# Calculam SNR-ul dintre imaginea curata si imaginea zgomotoasa
-# In mod normal, aceasta este o masura a zgomotului adaugat (semnalul este imaginea curata)
+
 snr_initial = calculeaza_snr_db(imagine_curata, imagine_zgomotoasa) 
 
 print("Tinta SNR dorita: 7 Db")
 print(f"SNR CALCULAT INAINTE de filtrare: {snr_initial:.2f} Db")
 
-# --- 6. PROCESUL DE FILTRARE SI OPTIMIZARE ---
 
-# Raze de testat (copiate din logica initiala)
 raze_test = [47, 48, 49, 50, 51, 52, 53]
 valori_snr_obtinute = []
 
-# Iteram pentru a gasi raza care maximizeaza SNR-ul (eroarea minima)
 for raza in raze_test:
-    # Filtrare
+    
     imagine_filtrata = filtreaza_trece_jos_2d(imagine_zgomotoasa, raza)
     
-    # Calcul SNR (evaluam calitatea imaginii filtrate fata de cea curata)
+    # Calcul SNR 
     valori_snr_obtinute.append(calculeaza_snr_db(imagine_curata, imagine_filtrata))
 
 
-# Gasim indexul care corespunde celei mai mari valori SNR (cea mai buna performanta)
 index_raza_optima = np.argmax(valori_snr_obtinute) 
 raza_optima = raze_test[index_raza_optima]
 snr_obtinut_optim = valori_snr_obtinute[index_raza_optima]
@@ -115,3 +106,9 @@ imagine_filtrata_finala = filtreaza_trece_jos_2d(imagine_zgomotoasa, raza_optima
 plt.imshow(imagine_filtrata_finala, cmap=harta_culori)
 plt.savefig(f"{cale_grafice}/Filtered_Optimal_Face.pdf", format="pdf")
 plt.show()
+
+
+# Tinta SNR dorita: 7 Db
+# SNR CALCULAT INAINTE de filtrare: -21.00 Db
+# SNR CALCULAT DUPA filtrare (Optim): -6.98 Db
+# RAZA OPTIMA de taiere: 49
