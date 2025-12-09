@@ -24,64 +24,56 @@ period2 = 0.005
 seasonal = 0.1 * np.sin(2 * np.pi * t * period1) + \
            0.2 * np.sin(2 * np.pi * t * period2)
 
-# Zgomot alb gaussian
 sigma = 0.2
 noise = np.random.normal(0, sigma, N)
 
-# Seria totală
-series = trend + seasonal + noise
 
-# -----------------------------
-# PLOTURI
-# -----------------------------
+series = trend + seasonal + noise
 
 plt.figure(figsize=(14, 10))
 
-# 1. Seria totală
 plt.subplot(4, 1, 1)
 plt.plot(t, series)
-plt.title("Seria de timp totală (N=1000)")
+plt.title("Seria de timp totala (N=1000)")
 plt.grid(True)
 
-# 2. Trend
+
 plt.subplot(4, 1, 2)
 plt.plot(t, trend, color="orange")
 plt.title("Componenta trend (polinom grad 2)")
 plt.grid(True)
 
-# 3. Sezon
+
 plt.subplot(4, 1, 3)
 plt.plot(t, seasonal, color="green")
-plt.title("Componenta sezonieră (2 sinusoide)")
+plt.title("Componenta sezoniera (2 sinusoide)")
 plt.grid(True)
 
-# 4. Zgomot
+
 plt.subplot(4, 1, 4)
 plt.plot(t, noise, color="red")
 plt.title("Componenta zgomot (Gaussian)")
 plt.grid(True)
 
 plt.tight_layout()
-# plt.show()
+
 
 
 def autocorrelation(x):
     x = x - np.mean(x)
     corr = np.correlate(x, x, mode='full')
-    corr = corr[corr.size // 2:]      # păstrăm doar lag >= 0
-    return corr / corr[0]             # normalizare (rho(k))
+    corr = corr[corr.size // 2:]      
+    return corr / corr[0]             
 
 
-# Calculează autocorelația
 rho = autocorrelation(series)
 
-# Vectorul lagurilor
 lags = np.arange(len(rho))
 
-# Plot autocorelație
+
 plt.figure(figsize=(12,4))
 plt.stem(lags, rho)
-plt.title("Autocorelația seriei")
+plt.title("Autocorelatia seriei")
 plt.xlabel("Lag")
 plt.ylabel("rho(k)")
 plt.grid(True)
@@ -131,7 +123,7 @@ for p in range(1, max_p+1):
     if len(train) <= p:
         break
     phi = ar_predict_one_step(train, p)
-    # Predictii pe test (un pas înainte)
+    # Predictii pe test (un pas inainte)
     preds = []
     history = train[-p:].tolist()  
     for t in range(len(test)):
@@ -145,3 +137,5 @@ for p in range(1, max_p+1):
         best_p = p
 
 print(f"Cel mai bun p: {best_p}, MSE: {best_mse}")
+
+
