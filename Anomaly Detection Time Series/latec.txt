@@ -1,0 +1,320 @@
+\documentclass[12pt, a4paper]{report}
+
+% --- PACHETE ESENȚIALE ---
+\usepackage[utf8]{inputenc}
+\usepackage[romanian]{babel} % Suport pentru limba română
+\usepackage{amsmath, amsfonts, amssymb} % Pachete matematice
+\usepackage{graphicx} % Pentru grafice
+\usepackage{geometry} % Margini
+\usepackage{hyperref} % Link-uri interactive
+\usepackage{algorithm} % Pentru algoritmi
+\usepackage{algpseudocode}
+\usepackage{listings} % Pentru cod Python
+\usepackage{color}
+
+% Setări margini
+\geometry{
+ a4paper,
+ left=25mm,
+ right=25mm,
+ top=25mm,
+ bottom=25mm,
+}
+
+% --- DATELE TEZEI ---
+\title{\textbf{Detectarea Anomaliilor în Serii de Timp Financiare utilizând un Ansamblu Hibrid: SSA, Procese Stocastice și Învățare Adaptivă}}
+\author{Jalba Cosmin}
+\date{2026}
+
+\begin{document}
+
+\maketitle
+
+% --- CUPRINS ---
+\tableofcontents
+\newpage
+
+% =========================================================================
+% CAPITOLUL 1: INTRODUCERE
+% =========================================================================
+\chapter{Introducere}
+
+\section{Motivația și Contextul Problemei}
+
+Piețele financiare moderne se caracterizează printr-o complexitate dinamică ridicată și prin incidența recurentă a evenimentelor extreme, denumite în literatura de specialitate drept "Black Swans" (Taleb, 2007). Această realitate empirică invalidează adesea premisele fundamentale ale metodelor tradiționale de analiză, care se bazează preponderent pe Ipoteza Piețelor Eficiente (EMH) și pe distribuția Gaussiană a randamentelor.
+
+
+
+Consecința directă a acestor limitări este incapacitatea modelelor clasice de a detecta timpuriu schimbările de regim structural și de a cuantifica corect riscul în perioade de volatilitate extremă ("Fat Tails"). Prin urmare, apare necesitatea critică de a dezvolta sisteme robuste de detecție a anomaliilor, capabile să opereze independent de regimul de piață predominant (fie el de calm sau de criză) și să integreze multiple perspective analitice.
+
+\section{Obiectivele Lucrării}
+
+Prezenta lucrare își propune dezvoltarea și validarea unui sistem hibrid de detecție a anomaliilor în seriile de timp financiare, structurat pe următoarele obiective specifice:
+
+\begin{itemize}
+    \item \textbf{Descompunerea spectrală și filtrarea semnalului (SSA):} 
+    Implementarea unui algoritm de \textit{Singular Spectrum Analysis} (SSA) pentru extragerea trendului principal și eliminarea zgomotului stocastic. Această etapă urmărește izolarea componentelor cu energie dominantă din seria de prețuri, oferind o bază curată pentru analiza ulterioară.
+
+    \item \textbf{Modelarea dinamicii de revenire la medie (Procese Ornstein-Uhlenbeck):}
+    Utilizarea proceselor stocastice de tip Ornstein-Uhlenbeck pentru a modela comportamentul reziduurilor față de trendul identificat. Obiectivul este cuantificarea parametrilor fizici ai pieței, respectiv viteza de revenire la echilibru ($\theta$) și magnitudinea șocurilor, permițând distingerea între fluctuațiile normale și anomaliile structurale.
+
+    \item \textbf{Modelarea volatilității heteroscedastice (GARCH):}
+    Integrarea modelelor de tip \textit{Generalized Autoregressive Conditional Heteroscedasticity} (GARCH) pentru a surprinde natura variabilă în timp a riscului. Aceasta permite ajustarea dinamică a pragurilor de detecție în funcție de regimul de volatilitate curent, reducând rata alarmelor false.
+
+    \item \textbf{Dezvoltarea unui mecanism de decizie unificat (Ensemble Learning):}
+    Construirea unui meta-algoritm de tip \textit{Weighted Voting} care agregă semnalele statistice (SSA, GARCH, OU) cu o componentă de recunoaștere a formelor (\textit{Pattern Matching}). Aceasta din urmă analizează similaritatea morfologică dintre comportamentul curent al pieței și semnăturile crizelor istorice (ex: Criza Financiară din 2008, Crash-ul COVID-19), oferind un scor de risc robust și multidimensional.
+\end{itemize}
+
+\section{Structura Tezei}
+
+Lucrarea este structurată în X capitole, după cum urmează:
+
+\textbf{Capitolul 2} prezintă fundamentele teoretice ale metodelor utilizate, detaliind aparatul matematic din spatele analizei spectrale singulare și al proceselor stocastice.
+\textbf{Capitolul 3} descrie metodologia propusă și arhitectura pipeline-ului de procesare a datelor.
+\textbf{Capitolul 4} ilustrează rezultatele experimentale obținute pe indicele S\&P 500, incluzând studii de caz comparative.
+În final, \textbf{Capitolul 5} sintetizează concluziile și propune direcții viitoare de cercetare.
+
+% =========================================================================
+% CAPITOLUL 2: FUNDAMENTE TEORETICE
+% =========================================================================
+\chapter{Fundamente teoretice}
+
+\section{Singular Spectrum Analysis (SSA)}
+
+Analiza Spectrală Singulară (SSA) este o tehnică non-parametrică de analiză a seriilor de timp, care combină elemente din statistica multivariată, teoria sistemelor dinamice și procesarea semnalului. Spre deosebire de Analiza Fourier (FFT), care presupune periodicități stricte și staționaritate, SSA este extrem de eficientă în extragerea semnalelor din serii financiare zgomotoase, scurte și non-staționare.
+
+În cadrul acestui sistem, utilizăm SSA pentru etapa de pre-procesare: descompunerea prețului brut ($P_t$) într-o componentă de Trend determinist ($T_t$) și o componentă reziduală stocastică ($R_t$).
+
+Algoritmul standard SSA constă în patru etape fundamentale:
+
+\subsection{1. Imersiunea (Embedding)}
+Transformăm seria unidimensională $X = (x_1, \dots, x_N)$ într-o secvență de vectori multidimensionali, construind \textbf{Matricea Traiectoriei} $\mathbf{X}$ (o matrice Hankel). Alegând o lungime a ferestrei $L$ ($1 < L < N$), definim $K = N - L + 1$ vectori întârziați:
+\begin{equation}
+\mathbf{X} = [X_1 : \dots : X_K] = 
+\begin{pmatrix}
+x_1 & x_2 & \dots & x_K \\
+x_2 & x_3 & \dots & x_{K+1} \\
+\vdots & \vdots & \ddots & \vdots \\
+x_L & x_{L+1} & \dots & x_N
+\end{pmatrix}
+\end{equation}
+Această matrice capturează dinamica sistemului în spațiu fazic.
+
+\subsection{2. Descompunerea Valorilor Singulare (SVD)}
+Calculăm matricea de covarianță $\mathbf{S} = \mathbf{X}\mathbf{X}^T$ și determinăm valorile proprii $\lambda_1 \geq \lambda_2 \geq \dots \geq \lambda_L \geq 0$ și vectorii proprii ortonormați corespunzători $U_1, \dots, U_L$.
+Matricea traiectoriei poate fi reprezentată ca sumă de matrici elementare de rang 1:
+\begin{equation}
+\mathbf{X} = \sum_{i=1}^{d} \sqrt{\lambda_i} U_i V_i^T
+\end{equation}
+unde $V_i = \mathbf{X}^T U_i / \sqrt{\lambda_i}$ sunt vectorii principali.
+
+\subsection{3. Gruparea (Grouping)}
+Aceasta este etapa de filtrare propriu-zisă. Împărțim setul indicilor $\{1, \dots, d\}$ în două submulțimi disjuncte: $I_{trend}$ (componentele cu energie/valori proprii mari) și $I_{noise}$ (componentele cu energie mică).
+\begin{equation}
+\mathbf{X}_{Trend} = \sum_{i \in I_{trend}} \sqrt{\lambda_i} U_i V_i^T
+\end{equation}
+În analiza financiară, prima valoare proprie ($\lambda_1$) capturează de obicei peste 80\% din varianța seriei, reprezentând trendul de piață general.
+
+\subsection{4. Reconstrucția (Diagonal Averaging)}
+Transformăm matricea rezultată $\mathbf{X}_{Trend}$ înapoi într-o serie de timp unidimensională prin mediere pe diagonalele secundare (procedura Hankelization). Rezultatul este seria de trend netezită, care va fi substrasă din prețul original pentru a obține reziduurile necesare analizei de risc.
+
+\section{Procesul Ornstein-Uhlenbeck (OU)}
+
+După eliminarea trendului prin SSA, componenta reziduală ($R_t$) prezintă un comportament oscilatoriu în jurul valorii zero. Pentru a modela matematic acest comportament și a stabili limitele "normale" de variație, utilizăm procesul stocastic Ornstein-Uhlenbeck.
+
+Spre deosebire de Mișcarea Browniană standard (Wiener Process), care este non-staționară și are o varianță ce crește liniar cu timpul ($Var(W_t) = t$), procesul OU este \textit{staționar} și prezintă proprietatea de \textbf{Revenire la Medie} (Mean Reversion). Aceasta îl face ideal pentru modelarea "zgomotului" pieței, care tinde să se corecteze după șocuri.
+
+Dinamica procesului este descrisă de Ecuația Diferențială Stocastică (SDE) Langevin:
+\begin{equation}
+dR_t = \theta (\mu - R_t)dt + \sigma dW_t
+\end{equation}
+
+Unde parametrii au o interpretare fizică directă în contextul pieței:
+\begin{itemize}
+    \item $\mu$: Media de echilibru pe termen lung (în cazul reziduurilor, $\mu \approx 0$).
+    \item $\theta > 0$: \textbf{Viteza de revenire la medie}. Cu cât $\theta$ este mai mare, cu atât piața absoarbe șocurile mai rapid ("elastic rigid"). Un $\theta \to 0$ indică o piață ineficientă sau o schimbare de regim.
+    \item $\sigma$: Volatilitatea intrinsecă a șocurilor aleatoare.
+\end{itemize}
+
+Soluția staționară a acestui proces implică o varianță de echilibru finită:
+\begin{equation}
+Var(R_t) = \frac{\sigma^2}{2\theta}
+\end{equation}
+Această relație ne permite să definim un \textbf{"Tunel de Echilibru"} static. Orice deviație a reziduurilor care depășește intervalul $[\mu - 3\sqrt{\frac{\sigma^2}{2\theta}}, \mu + 3\sqrt{\frac{\sigma^2}{2\theta}}]$ este clasificată statistic ca o anomalie structurală, semnalând că forța de revenire a pieței a fost copleșită de magnitudinea șocului.\
+\section{Modelul GARCH și Volatilitatea Condiționată}
+
+O limitare fundamentală a modelelor liniare (inclusiv a procesului OU cu $\sigma$ constant) este asumarea homoscedasticității (varianță constantă în timp). Totuși, seriile financiare prezintă fenomenul de \textit{"Volatility Clustering"} (Mandelbrot, 1963): perioadele de calmitate sunt urmate de perioade de calmitate, iar perioadele de turbulență tind să persiste.
+
+Pentru a adapta pragurile de detecție la regimul curent de piață, utilizăm modelul \textbf{GARCH(p,q)} (Generalized Autoregressive Conditional Heteroscedasticity). Acesta modelează varianța curentă ($\sigma_t^2$) ca o funcție de erorile trecute și varianțele trecute.
+
+Modelul specific utilizat în această lucrare este GARCH(1,1), care s-a dovedit empiric a fi cel mai robust pentru date financiare:
+
+\begin{equation}
+\sigma_t^2 = \omega + \alpha \epsilon_{t-1}^2 + \beta \sigma_{t-1}^2
+\end{equation}
+
+Unde:
+\begin{itemize}
+    \item $\omega > 0$: Interceptul (varianța minimă de bază).
+    \item $\epsilon_{t-1}^2$: Pătratul reziduului anterior (informația despre \textbf{șocul recent}). Parametrul $\alpha$ măsoară reactivitatea pieței la evenimente noi.
+    \item $\sigma_{t-1}^2$: Varianța estimată anterioară (informația despre \textbf{memoria pieței}). Parametrul $\beta$ măsoară persistența volatilității.
+\end{itemize}
+
+Condiția de staționaritate impune ca $\alpha + \beta < 1$.
+
+În arhitectura ansamblului propus, GARCH furnizează limitele \textbf{dinamice}. Spre deosebire de tunelul static OU, tunelul GARCH se "dilată" automat în perioade de criză. Astfel, o mișcare bruscă a prețului nu este etichetată imediat ca anomalie dacă ea apare într-un context deja volatil; este considerată anomalie doar dacă depășește volatilitatea (deja ridicată) anticipată de model.
+\section{Metode bazate pe Semnătură (Pattern Matching)}
+
+Metodele statistice descrise anterior (SSA, GARCH, OU) se concentrează pe proprietățile distribuției datelor (medie, varianță), ignorând adesea ordinea secvențială specifică a observațiilor. Totuși, crizele financiare tind să urmeze morfologii temporale distincte (o "semnătură" a comportamentului de panică), indiferent de anul în care se produc.
+
+Pentru a detecta aceste structuri, utilizăm tehnica de \textit{Template Matching} prin fereastră glisantă, având ca metrică de similaritate algoritmul \textbf{Dynamic Time Warping (DTW)}.
+
+\subsection{Justificarea alegerii DTW față de metricile clasice}
+
+În analiza seriilor de timp financiare, compararea directă a unei ferestre curente cu un șablon istoric (ex: Criza din 2008) întâmpină două obstacole majore:
+
+\begin{enumerate}
+    \item \textbf{Diferența de Scară (Amplitudine):} Indicii bursieri cresc în timp. O scădere de 100 de puncte era enormă în 1990, dar este neglijabilă în 2024. Această problemă este rezolvată prin normalizarea datelor (Z-Score) înainte de comparație.
+    \item \textbf{Diferența de Viteză (Dilatarea Temporală):} Aceasta este limitarea fundamentală a Distanței Euclidiene și a Corelației Pearson. Aceste metrici sunt "rigide" temporal: ele compară punctul $t_1$ al seriei $X$ strict cu punctul $t_1$ al seriei $Y$. 
+\end{enumerate}
+
+În realitate, crizele se desfășoară la viteze diferite. Un tipar de prăbușire care a durat 3 luni în 2008 s-ar putea repeta într-o formă accelerată (1 lună) în prezent. O metrică rigidă ar eșua în detectarea similarității din cauza nealinierii vârfurilor. 
+
+\textbf{Dynamic Time Warping (DTW)} soluționează această problemă fiind o metrică "elastică". Aceasta permite alinierea neliniară a seriilor, "dilatând" sau "comprimând" axa timpului pentru a găsi potrivirea morfologică optimă.
+
+\subsection{Formalizarea matematică a DTW}
+
+Fie două serii de timp, șablonul $T = (t_1, t_2, \dots, t_M)$ și fereastra curentă $W = (w_1, w_2, \dots, w_N)$. Scopul este găsirea unui drum de aliniere optim.
+
+Mai întâi, construim \textbf{Matricea Costurilor Locale} $C \in \mathbb{R}^{M \times N}$, unde fiecare element $(i, j)$ reprezintă distanța (de obicei Euclidiană pătratică) dintre punctele celor două serii:
+\begin{equation}
+C(i, j) = (t_i - w_j)^2
+\end{equation}
+
+Căutăm un \textbf{Drum de Aliniere} (Warping Path) $P = (p_1, \dots, p_K)$, unde fiecare $p_k = (i_k, j_k)$ este o pereche de indici din matricea $C$, care satisface condițiile de:
+\begin{itemize}
+    \item \textit{Limită:} Drumul începe în $(1,1)$ și se termină în $(M,N)$.
+    \item \textit{Continuitate:} Pașii sunt limitați la vecini adiacenți (fără salturi).
+    \item \textit{Monotonie:} Indicii nu pot descrește în timp.
+\end{itemize}
+
+Distanța DTW este definită ca minimul sumei costurilor de-a lungul tuturor drumurilor posibile. Aceasta se calculează eficient folosind programarea dinamică. Definim matricea costului acumulat $\gamma$:
+
+\begin{equation}
+\gamma(i, j) = C(i, j) + \min \begin{cases} 
+\gamma(i-1, j) & \text{(inserție)} \\
+\gamma(i, j-1) & \text{(ștergere)} \\
+\gamma(i-1, j-1) & \text{(potrivire)}
+\end{cases}
+\end{equation}
+
+Valoarea finală a distanței DTW este dată de $\gamma(M, N)$. 
+
+În implementarea noastră, o distanță $DTW \approx 0$ indică o potrivire structurală perfectă, iar valorile mari indică disimilaritate. Pentru a integra această metrică în sistemul de vot, transformăm distanța într-un scor de similaritate invers proporțional:
+\begin{equation}
+S_{DTW} = \frac{1}{1 + DTW(T, W)}
+\end{equation}
+Astfel, algoritmul este capabil să recunoască semnătura unei crize chiar dacă aceasta se manifestă cu o viteză diferită față de evenimentul istoric de referință.
+% =========================================================================
+% CAPITOLUL 3: METODOLOGIA PROPUSĂ
+% =========================================================================
+\chapter{Arhitectura Sistemului Hibrid (Ensemble)}
+
+\section{Pipeline-ul de Procesare}
+% Descrii diagrama bloc a sistemului tau.
+Sistemul propus integrează metodele descrise anterior într-un mecanism de vot ponderat ("Weighted Ensemble").
+
+\begin{algorithm}
+\caption{Pipeline Detectie Anomalii}
+\begin{algorithmic}[1]
+\State \textbf{Input:} Seria de prețuri $P_t$, Șablon Criză $T$
+\State \textbf{Step 1:} Extrage Trend $T_{SSA}$ folosind SSA
+\State \textbf{Step 2:} Calculează Reziduuri $R_t = P_t - T_{SSA}$
+\State \textbf{Step 3:} Calibrează limite dinamice $L_{GARCH}$ pe $R_t$
+\State \textbf{Step 4:} Calibrează limite statice $L_{OU}$ pe $R_t$
+\State \textbf{Step 5:} Calculează similaritatea $S_{Pattern}$ între $P_t$ și $T$
+\State \textbf{Step 6:} Agregare Scor: 
+$$ Scor_{Total} = w_1 \cdot I_{GARCH} + w_2 \cdot I_{OU} + w_3 \cdot I_{Pattern} $$
+\State \textbf{Output:} Alertă dacă $Scor_{Total} > Prag_{Critic}$
+\end{algorithmic}
+\end{algorithm}
+
+\section{Justificarea Ponderilor în Cadrul Ansamblului}
+
+Un aspect critic al arhitecturii propuse este mecanismul de agregare a semnalelor individuale într-un \textit{Scor Unificat de Risc}. Deoarece metodele componente au sensibilități și rate de alarmă falsă diferite, o medie aritmetică simplă ar fi suboptimală.
+
+Am optat pentru o schemă de ponderare ierarhică, bazată pe **specificitatea** și **severitatea** tipului de anomalie detectat de fiecare algoritm. Ponderile $w_i$ sunt atribuite astfel:
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|l|c|l|}
+\hline
+\textbf{Componentă} & \textbf{Pondere ($w_i$)} & \textbf{Tipul Detecției} \\ \hline
+GARCH & 1.0 & Reactiv (Volatilitate Locală) \\ \hline
+Ornstein-Uhlenbeck (OU) & 1.5 & Statistic (Deviație de Echilibru) \\ \hline
+Pattern Matching (DTW) & 2.5 & Structural (Recunoaștere Morfologică) \\ \hline
+\end{tabular}
+\caption{Schema de Ponderare a Ansamblului Hibrid}
+\label{tab:weights}
+\end{table}
+
+Justificarea teoretică pentru această distribuție este următoarea:
+
+\subsection{1. Pondere Bazală: GARCH ($w = 1.0$)}
+Modelul GARCH este extrem de sensibil la fluctuațiile pieței. Deși este excelent pentru a detecta creșterea incertitudinii ("Volatility Clustering"), volatilitatea ridicată nu implică automat o prăbușire a pieței; aceasta poate apărea și în timpul unor corecții sănătoase sau a unor știri economice minore.
+Fiind o metodă **reactivă** și cu o rată ridicată de rezultate fals-pozitive ("zgomotoasă"), îi atribuim ponderea minimă unitară. Semnalul GARCH servește drept "nivel de alertă galbenă".
+
+\subsection{2. Pondere Intermediară: Ornstein-Uhlenbeck ($w = 1.5$)}
+Procesul OU modelează proprietatea fundamentală de revenire la medie a prețurilor. O alertă din partea acestui modul indică faptul că prețul a deviat de la tendința centrală cu o magnitudine improbabilă statistic (ex: $> 3\sigma_{echilibru}$). 
+Aceasta reprezintă o încălcare a "fizicii" normale a pieței, fiind un semnal mai puternic decât simpla volatilitate. Totuși, piețele pot rămâne iraționale pe perioade lungi (bule speculative), motiv pentru care ponderea este medie.
+
+\subsection{3. Pondere Critică: Pattern Matching / DTW ($w = 2.5$)}
+Această componentă are cea mai mare greutate în decizia finală deoarece este singura metodă **predictivă** și **structurală**. 
+Dacă algoritmul DTW identifică o similitudine morfologică ridicată (ex: $> 80\%$) cu un eveniment istoric catastrofal (precum Crash-ul din 2008 sau Martie 2020), probabilitatea unui risc sistemic este maximă. Formele grafice specifice ("signatures") ale vânzărilor în panică sunt evenimente rare și specifice. Prin urmare, o potrivire la acest nivel este considerată o alertă critică ("Black Swan"), justificând o pondere care poate declanșa singură alarma sistemului, chiar și în absența volatilității extreme inițiale.
+
+\subsection{Scorul Final de Anomalie}
+Scorul agregat la momentul $t$ este calculat conform relației:
+\begin{equation}
+S_{ensemble}(t) = 1.0 \cdot I_{GARCH}(t) + 1.5 \cdot I_{OU}(t) + 2.5 \cdot I_{DTW}(t)
+\end{equation}
+Unde $I$ sunt funcții indicator binare ($1$ pentru detecție, $0$ pentru normal).
+Pragul critic de acțiune este stabilit la $S_{critic} = 3.5$. Acest prag necesită consensul a cel puțin două metode (de exemplu, Volatilitate + Structură sau Statistică + Structură) pentru a valida o anomalie majoră, eliminând astfel erorile izolate ale unui singur model.
+
+% =========================================================================
+% CAPITOLUL 4: REZULTATE EXPERIMENTALE
+% =========================================================================
+\chapter{Studii de Caz și Rezultate}
+
+\section{Setul de Date}
+Analiza a fost efectuată pe indicele S\&P 500 în perioada 2019-2024, cuprinzând evenimente majore precum Crash-ul COVID-19 (2020) și Piața Bear din 2022.
+
+\section{Analiza Crizei COVID-19 (Martie 2020)}
+% Aici pui graficele generate de Python.
+% Explici cum SSA a aratat caderea, GARCH s-a largit, iar Pattern a explodat.
+În figura X, observăm suprapunerea alertelor. Deși GARCH a adaptat limitele de volatilitate, magnitudinea șocului a depășit chiar și predicția adaptivă, confirmând natura de "Black Swan" a evenimentului.
+
+\section{Analiza Comparativă: Static vs Dinamic}
+% Aici pui graficul cu Tunelul Verde (OU) vs Tunelul Portocaliu (GARCH).
+Comparând limitele statice derivate din procesul Ornstein-Uhlenbeck cu cele dinamice GARCH, demonstrăm că modelele statice generează alarme false în perioade de volatilitate ridicată, în timp ce abordarea hibridă reduce rata de falși pozitivi.
+
+% =========================================================================
+% CAPITOLUL 5: CONCLUZII
+% =========================================================================
+\chapter{Concluzii și Direcții Viitoare}
+
+\section{Contribuții Personale}
+Am dezvoltat un framework unificat care tratează detectarea anomaliilor nu doar ca o problemă statistică, ci și ca una geometrică (Pattern Matching) și fizică (Mean Reversion).
+
+\section{Direcții Viitoare}
+Integrarea analizei de sentiment (NLP) din știri financiare pentru a ajusta ponderile ansamblului în timp real.
+
+% =========================================================================
+% BIBLIOGRAFIE
+% =========================================================================
+\begin{thebibliography}{9}
+\bibitem{mandelbrot} Mandelbrot, B. (1963). \textit{The Variation of Certain Speculative Prices}.
+\bibitem{golyandina} Golyandina, N. et al. (2001). \textit{Analysis of Time Series Structure: SSA and related techniques}.
+\bibitem{engle} Engle, R. F. (1982). \textit{Autoregressive Conditional Heteroscedasticity with Estimates of the Variance of United Kingdom Inflation}.
+\end{thebibliography}
+
+\end{document}

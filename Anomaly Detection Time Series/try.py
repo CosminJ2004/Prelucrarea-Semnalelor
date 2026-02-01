@@ -79,34 +79,85 @@ def detect_ou(residuals, threshold=3.0):
     flags = (np.abs(residuals) > limit).astype(int)
     return flags
 
-def detect_signature(series, template, threshold=0.75):
-    """ Metoda 3: Signature / Pattern Matching (Numpy Robust) """
+from scipy.spatial.distance import cdist
+
+def dtw_distance_fast(s1, s2):
+    """
+    Calculeaza distanta DTW intre doua serii normalizate.
+    Foloseste matricea de distante (cdist) pentru viteza.
+    """
+    # Matricea distantelor locale (Euclidian)
+    dist_matrix = cdist(s1.reshape(-1, 1), s2.reshape(-1, 1), metric='euclidean')
+    
+    n, m = dist_matrix.shape
+    
+    # Matricea de costuri acumulate (Dynamic Programming)
+    dtw = np.zeros((n + 1, m + 1))
+    dtw[1:, 0] = np.inf
+    dtw[0, 1:] = np.inf
+    dtw[0, 0] = 0
+    
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            cost = dist_matrix[i-1, j-1]
+            # Luam minimul vecinilor
+            dtw[i, j] = cost + min(dtw[i-1, j],    # Insertie
+                                   dtw[i, j-1],    # Stergere
+                                   dtw[i-1, j-1])  # Match
+            
+    return dtw[n, m]
+
+def detect_signature_dtw(series, template, threshold=0.75):
+    """
+    Metoda 3 (Upgrade): Signature Matching folosind DTW.
+    Mai lent, dar detecteaza crize care se desfasoara la viteze diferite.
+    """
     series_vals = series.values
     temp_vals = template.values
     
-    # Normalizare Template
-    temp_norm = (temp_vals - np.mean(temp_vals)) / (np.std(temp_vals) + 1e-6)
+    # 1. Normalizare Template (Z-Score) - CRUCIAL PENTRU DTW
+    # DTW calculeaza distante absolute, deci scara trebuie sa fie identica (deviatii standard)
+    temp_mean = np.mean(temp_vals)
+    temp_std = np.std(temp_vals)
+    if temp_std == 0: return pd.Series(0, index=series.index)
+    
+    norm_template = (temp_vals - temp_mean) / temp_std
     window = len(temp_vals)
     
-    correlations = []
+    dtw_scores = []
+    
     # Sliding window
+    # NOTA: Poate dura 10-30 secunde pe un istoric lung!
     for i in range(len(series_vals) - window + 1):
         win = series_vals[i : i+window]
+        
         if np.std(win) == 0:
-            correlations.append(0)
+            dtw_scores.append(0) # Scor 0 (Risc mic)
         else:
+            # Normalizam fereastra curenta
             win_norm = (win - np.mean(win)) / np.std(win)
-            corr = np.mean(win_norm * temp_norm)
-            correlations.append(corr)
             
-    # Padding
-    pad = len(series) - len(correlations)
-    correlations = np.array([0.0]*pad + correlations)
+            # Calculam Distanta DTW
+            dist = dtw_distance_fast(win_norm, norm_template)
+            
+            # CONVERSIE DISTANTA -> SCOR DE SIMILARITATE (0 la 1)
+            # Distanta 0 => Scor 1 (Match perfect)
+            # Distanta Mare => Scor 0
+            # Formula empirica: 1 / (1 + distanta_normalizata)
+            # Normalizam distanta la lungimea ferestrei
+            normalized_dist = dist / window 
+            similarity = 1 / (1 + normalized_dist)
+            
+            dtw_scores.append(similarity)
+            
+    # Padding la inceput
+    pad = len(series) - len(dtw_scores)
+    dtw_scores = np.array([0.0]*pad + dtw_scores)
     
-    # Returnam semnal binar
-    flags = pd.Series((correlations > threshold).astype(int), index=series.index)
+    # Returnam semnal binar bazat pe prag
+    # Atentie: Pragul pentru DTW trebuie recalibrat (poate 0.65 e mai bun decat 0.75)
+    flags = pd.Series((dtw_scores > threshold).astype(int), index=series.index)
     return flags
-
 # --- 3. EXECUTIA AGREGATA ---
 
 if __name__ == "__main__":
@@ -131,7 +182,7 @@ if __name__ == "__main__":
     signal_ou = detect_ou(residuals, threshold=3.0)
     
     # 3. Signature (Reactioneaza la forma graficului)
-    signal_sign = detect_signature(df, signature_template, threshold=0.80)
+    signal_sign = detect_signature_dtw(df, signature_template, threshold=0.80)
 
     print("3. Calcul Scor Ponderat (Ensemble)...")
     
