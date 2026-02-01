@@ -62,7 +62,7 @@ def fit_ornstein_uhlenbeck(residuals, dt=1.0):
 
 # --- 3. EXECUTIE ---
 print("Descarcare date S&P 500...")
-df = yf.download("^GSPC", start="2020-01-01", end="2024-01-01", progress=False)
+df = yf.download("^GSPC", start="2000-01-01", end="2024-01-01", progress=False)
 price = df['Close']
 if hasattr(price, 'squeeze'): price = price.squeeze()
 price = price.values
