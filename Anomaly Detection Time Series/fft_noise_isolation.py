@@ -58,7 +58,7 @@ ax2.grid(True, alpha=0.3)
 # --- PANEL 3: Distribuția Zgomotului (Histograma) ---
 ax3 = plt.subplot(3, 1, 3)
 ax3.hist(noise_data, bins=50, color='red', alpha=0.7, edgecolor='black')
-ax3.set_title("3. Histograma Zgomotului: Este distribuția Normală (Gaussiană)?")
+ax3.set_title("3. Histograma Zgomotului: Este distribuția Normală (Gaussiană)")
 ax3.set_xlabel("Amplitudine Zgomot ($)")
 ax3.set_ylabel("Număr de Zile")
 ax3.grid(True, alpha=0.3)

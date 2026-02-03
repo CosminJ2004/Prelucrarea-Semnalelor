@@ -11,6 +11,8 @@
 \usepackage{algpseudocode}
 \usepackage{listings} % Pentru cod Python
 \usepackage{color}
+\usepackage{graphicx}
+\usepackage{subcaption} % Acesta este pachetul magic pentru side-by-side
 
 % Setări margini
 \geometry{
@@ -84,6 +86,29 @@ Lucrarea este structurată în X capitole, după cum urmează:
 Analiza Spectrală Singulară (SSA) este o tehnică non-parametrică de analiză a seriilor de timp, care combină elemente din statistica multivariată, teoria sistemelor dinamice și procesarea semnalului. Spre deosebire de Analiza Fourier (FFT), care presupune periodicități stricte și staționaritate, SSA este extrem de eficientă în extragerea semnalelor din serii financiare zgomotoase, scurte și non-staționare.
 
 În cadrul acestui sistem, utilizăm SSA pentru etapa de pre-procesare: descompunerea prețului brut ($P_t$) într-o componentă de Trend determinist ($T_t$) și o componentă reziduală stocastică ($R_t$).
+\begin{figure}[h!]
+    \centering
+    % --- PRIMUL PLOT (STANGA) ---
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        % width=\linewidth inseamna ca ocupa toata latimea subfigurii (adica 48% din pagina)
+        \includegraphics[width=\linewidth]{plots/ssa.png} 
+        \caption{Analiza SSA (Trend)}
+        \label{fig:plot_ssa}
+    \end{subfigure}
+    \hfill % Comanda \hfill impinge figurile la extremitati, creand spatiu intre ele
+    % --- AL DOILEA PLOT (DREAPTA) ---
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{plots/fft_noise.png}
+        \caption{Analiza FFT (Trend+Zgomot)}
+        \label{fig:plot_garch}
+    \end{subfigure}
+    
+    % --- TITLUL GENERAL ---
+    \caption{Analiză Comparativă: Extragerea trendului / eliminarea zgomotului folosind SSA (a) si FFT (b)}
+    \label{fig:comparatie_metode}
+\end{figure}
 
 Algoritmul standard SSA constă în patru etape fundamentale:
 
@@ -118,9 +143,11 @@ Aceasta este etapa de filtrare propriu-zisă. Împărțim setul indicilor $\{1, 
 \subsection{4. Reconstrucția (Diagonal Averaging)}
 Transformăm matricea rezultată $\mathbf{X}_{Trend}$ înapoi într-o serie de timp unidimensională prin mediere pe diagonalele secundare (procedura Hankelization). Rezultatul este seria de trend netezită, care va fi substrasă din prețul original pentru a obține reziduurile necesare analizei de risc.
 
+
+
 \section{Procesul Ornstein-Uhlenbeck (OU)}
 
-După eliminarea trendului prin SSA, componenta reziduală ($R_t$) prezintă un comportament oscilatoriu în jurul valorii zero. Pentru a modela matematic acest comportament și a stabili limitele "normale" de variație, utilizăm procesul stocastic Ornstein-Uhlenbeck.
+După eliminarea trendului prin SSA, componenta reziduală ($R_t$) prezintă un comportament oscilatoriu în jurul valorii zero (asa cum am observat si in cazul FFT, zgomotul este distribuit normal in jurul lui zero). Pentru a modela matematic acest comportament și a stabili limitele "normale" de variație, utilizăm procesul stocastic Ornstein-Uhlenbeck.
 
 Spre deosebire de Mișcarea Browniană standard (Wiener Process), care este non-staționară și are o varianță ce crește liniar cu timpul ($Var(W_t) = t$), procesul OU este \textit{staționar} și prezintă proprietatea de \textbf{Revenire la Medie} (Mean Reversion). Aceasta îl face ideal pentru modelarea "zgomotului" pieței, care tinde să se corecteze după șocuri.
 
@@ -141,6 +168,18 @@ Soluția staționară a acestui proces implică o varianță de echilibru finit�
 Var(R_t) = \frac{\sigma^2}{2\theta}
 \end{equation}
 Această relație ne permite să definim un \textbf{"Tunel de Echilibru"} static. Orice deviație a reziduurilor care depășește intervalul $[\mu - 3\sqrt{\frac{\sigma^2}{2\theta}}, \mu + 3\sqrt{\frac{\sigma^2}{2\theta}}]$ este clasificată statistic ca o anomalie structurală, semnalând că forța de revenire a pieței a fost copleșită de magnitudinea șocului.\
+
+\begin{figure}[h!]
+    \centering
+    % width=0.8\textwidth inseamna 80% din latimea textului (arata cel mai bine)
+    % Daca vrei cat toata pagina, pui width=1.0\textwidth
+    \includegraphics[width=1\textwidth]{plots/ou_ssa.png}
+    
+    \caption{Rezultatele analizei OU cu trendul identificat SSA pentru perioada 2018-2024.}
+    \label{fig:analiza_ssa_ou}
+\end{figure}
+
+
 \section{Modelul GARCH și Volatilitatea Condiționată}
 
 O limitare fundamentală a modelelor liniare (inclusiv a procesului OU cu $\sigma$ constant) este asumarea homoscedasticității (varianță constantă în timp). Totuși, seriile financiare prezintă fenomenul de \textit{"Volatility Clustering"} (Mandelbrot, 1963): perioadele de calmitate sunt urmate de perioade de calmitate, iar perioadele de turbulență tind să persiste.
@@ -163,6 +202,18 @@ Unde:
 Condiția de staționaritate impune ca $\alpha + \beta < 1$.
 
 În arhitectura ansamblului propus, GARCH furnizează limitele \textbf{dinamice}. Spre deosebire de tunelul static OU, tunelul GARCH se "dilată" automat în perioade de criză. Astfel, o mișcare bruscă a prețului nu este etichetată imediat ca anomalie dacă ea apare într-un context deja volatil; este considerată anomalie doar dacă depășește volatilitatea (deja ridicată) anticipată de model.
+
+\begin{figure}[h!]
+    \centering
+    % width=0.8\textwidth inseamna 80% din latimea textului (arata cel mai bine)
+    % Daca vrei cat toata pagina, pui width=1.0\textwidth
+    \includegraphics[width=1\textwidth]{plots/garch.png}
+    
+    \caption{Analiza volatilitatii S&P cu Garch pentru 2010-2024.}
+    \label{fig:analiza_garch}
+\end{figure}
+
+
 \section{Metode bazate pe Semnătură (Pattern Matching)}
 
 Metodele statistice descrise anterior (SSA, GARCH, OU) se concentrează pe proprietățile distribuției datelor (medie, varianță), ignorând adesea ordinea secvențială specifică a observațiilor. Totuși, crizele financiare tind să urmeze morfologii temporale distincte (o "semnătură" a comportamentului de panică), indiferent de anul în care se produc.
@@ -215,6 +266,16 @@ Valoarea finală a distanței DTW este dată de $\gamma(M, N)$.
 S_{DTW} = \frac{1}{1 + DTW(T, W)}
 \end{equation}
 Astfel, algoritmul este capabil să recunoască semnătura unei crize chiar dacă aceasta se manifestă cu o viteză diferită față de evenimentul istoric de referință.
+\begin{figure}[h!]
+    \centering
+    % width=0.8\textwidth inseamna 80% din latimea textului (arata cel mai bine)
+    % Daca vrei cat toata pagina, pui width=1.0\textwidth
+    \includegraphics[width=1\textwidth]{plots/dtw_corr.png}
+    
+    \caption{Rezultatele analizei DTW cu criza din 2008 ca semnatura}
+    \label{fig:analiza_dtw}
+\end{figure}
+
 % =========================================================================
 % CAPITOLUL 3: METODOLOGIA PROPUSĂ
 % =========================================================================
@@ -280,6 +341,17 @@ S_{ensemble}(t) = 1.0 \cdot I_{GARCH}(t) + 1.5 \cdot I_{OU}(t) + 2.5 \cdot I_{DT
 Unde $I$ sunt funcții indicator binare ($1$ pentru detecție, $0$ pentru normal).
 Pragul critic de acțiune este stabilit la $S_{critic} = 3.5$. Acest prag necesită consensul a cel puțin două metode (de exemplu, Volatilitate + Structură sau Statistică + Structură) pentru a valida o anomalie majoră, eliminând astfel erorile izolate ale unui singur model.
 
+\begin{figure}[h!]
+    \centering
+    % width=0.8\textwidth inseamna 80% din latimea textului (arata cel mai bine)
+    % Daca vrei cat toata pagina, pui width=1.0\textwidth
+    \includegraphics[width=1\textwidth]{plots/ensemble2.png}
+    
+    \caption{Rezultatele analizei de tip Ensemble pentru perioada 2019-2023 (Pandemie+Razboi).}
+    \label{fig:analiza_ensemble_2}
+\end{figure}
+
+
 % =========================================================================
 % CAPITOLUL 4: REZULTATE EXPERIMENTALE
 % =========================================================================
@@ -291,11 +363,22 @@ Analiza a fost efectuată pe indicele S\&P 500 în perioada 2019-2024, cuprinzâ
 \section{Analiza Crizei COVID-19 (Martie 2020)}
 % Aici pui graficele generate de Python.
 % Explici cum SSA a aratat caderea, GARCH s-a largit, iar Pattern a explodat.
-În figura X, observăm suprapunerea alertelor. Deși GARCH a adaptat limitele de volatilitate, magnitudinea șocului a depășit chiar și predicția adaptivă, confirmând natura de "Black Swan" a evenimentului.
+În figura 3.1, observăm suprapunerea alertelor. Deși GARCH a adaptat limitele de volatilitate, magnitudinea șocului a depășit chiar și predicția adaptivă, confirmând natura de "Black Swan" a evenimentului.
 
 \section{Analiza Comparativă: Static vs Dinamic}
 % Aici pui graficul cu Tunelul Verde (OU) vs Tunelul Portocaliu (GARCH).
 Comparând limitele statice derivate din procesul Ornstein-Uhlenbeck cu cele dinamice GARCH, demonstrăm că modelele statice generează alarme false în perioade de volatilitate ridicată, în timp ce abordarea hibridă reduce rata de falși pozitivi.
+
+\begin{figure}[h!]
+    \centering
+    % width=0.8\textwidth inseamna 80% din latimea textului (arata cel mai bine)
+    % Daca vrei cat toata pagina, pui width=1.0\textwidth
+    \includegraphics[width=1\textwidth]{plots/g_ou_ssa.png}
+    
+    \caption{Rezultatele analizei OU vs GARCH cu trendul identificat SSA pentru perioada 2018-2024.}
+    \label{fig:analiza_ssa_ou}
+\end{figure}
+
 
 % =========================================================================
 % CAPITOLUL 5: CONCLUZII
@@ -306,7 +389,9 @@ Comparând limitele statice derivate din procesul Ornstein-Uhlenbeck cu cele din
 Am dezvoltat un framework unificat care tratează detectarea anomaliilor nu doar ca o problemă statistică, ci și ca una geometrică (Pattern Matching) și fizică (Mean Reversion).
 
 \section{Direcții Viitoare}
-Integrarea analizei de sentiment (NLP) din știri financiare pentru a ajusta ponderile ansamblului în timp real.
+Integrarea analizei de sentiment (NLP) din știri financiare pentru a ajusta ponderile ansamblului în timp real.\\
+Includerea unui graf de legatura intre diferiti indici bursieri (ex. Aur, Argint, Petrol, Bitcoin in corelatie cu S&P 500)
+
 
 % =========================================================================
 % BIBLIOGRAFIE
