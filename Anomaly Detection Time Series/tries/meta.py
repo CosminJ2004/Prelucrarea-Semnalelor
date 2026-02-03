@@ -101,7 +101,7 @@ def detect_pattern(series, template_series, threshold=0.7):
 # --- EXECUTIA PENTRU BTC (CORECTATA COMPLET) ---
 
 if __name__ == "__main__":
-    print("1. Descarcare date BTC...")
+    print("1. Descarcare date META...")
     df = yf.download("META", start="2018-01-01", end="2024-01-01")['Close']
 # Sablon: Corectia Cambridge Analytica (2018)
  
@@ -148,7 +148,7 @@ if __name__ == "__main__":
 
     # AXA 1
     ax1 = fig.add_subplot(gs[0])
-    ax1.plot(df.index, df, color='k', alpha=0.4, label='Pret BTC')
+    ax1.plot(df.index, df, color='k', alpha=0.4, label='Pret META')
     ax1.plot(df.index, trend, color='blue', alpha=0.3, linestyle='--', label='Trend SSA')
 
     # Filtrare pentru scatter plot
@@ -163,7 +163,7 @@ if __name__ == "__main__":
                          vmin=1, vmax=3.5, edgecolors='none', zorder=5, label='Anomalii')
         plt.colorbar(sc, ax=ax1, label="Scor Risc")
     
-    ax1.set_title("1. BTC: Detectie Anomalii (Sabloane + Volatilitate)")
+    ax1.set_title("1. META: Detectie Anomalii (Sabloane + Volatilitate)")
     ax1.set_yscale('log')
     ax1.legend(loc='upper left')
     ax1.grid(True, alpha=0.3)

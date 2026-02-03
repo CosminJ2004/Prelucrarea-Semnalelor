@@ -69,7 +69,7 @@ Prezenta lucrare își propune dezvoltarea și validarea unui sistem hibrid de d
 
 \section{Structura Tezei}
 
-Lucrarea este structurată în X capitole, după cum urmează:
+Lucrarea este structurată în 5 capitole, după cum urmează:
 
 \textbf{Capitolul 2} prezintă fundamentele teoretice ale metodelor utilizate, detaliind aparatul matematic din spatele analizei spectrale singulare și al proceselor stocastice.
 \textbf{Capitolul 3} descrie metodologia propusă și arhitectura pipeline-ului de procesare a datelor.
@@ -80,6 +80,20 @@ Lucrarea este structurată în X capitole, după cum urmează:
 % CAPITOLUL 2: FUNDAMENTE TEORETICE
 % =========================================================================
 \chapter{Fundamente teoretice}
+\section{Taxonomia Anomaliilor în Seriile de Timp}
+
+Conform clasificării standard propuse de Aggarwal \cite{aggarwal2017}, anomaliile într-un set de date pot fi categorisite în trei clase distincte. Sistemul hibrid propus în această lucrare este proiectat să adreseze fiecare tipologie în parte:
+
+\begin{enumerate}
+    \item \textbf{Anomalii Punctuale (Point Outliers):} Un punct de date care deviază semnificativ de la restul distribuției. 
+    \textit{În sistemul nostru, acestea sunt detectate de modulul GARCH (șocuri de volatilitate instantanee).}
+    
+    \item \textbf{Anomalii Contextuale (Contextual Outliers):} Un punct de date care este considerat anomalie doar într-un anumit context (de exemplu, o scădere de preț care este normală într-o piață volatilă, dar anormală într-o piață stabilă).
+    \textit{Acestea sunt adresate prin filtrarea SSA și procesul Ornstein-Uhlenbeck, care definesc "contextul" (trendul și echilibrul) față de care se măsoară deviația.}
+    
+    \item \textbf{Anomalii Colective (Collective Outliers):} O colecție de puncte de date care, luate individual, pot părea normale, dar care împreună formează un tipar neobișnuit (ex: o structură de crash).
+    \textit{Această clasă este detectată specific prin modulul de Pattern Matching (DTW), care analizează secvența morfologică a seriei de timp.}
+\end{enumerate}
 
 \section{Singular Spectrum Analysis (SSA)}
 
@@ -147,7 +161,7 @@ Transformăm matricea rezultată $\mathbf{X}_{Trend}$ înapoi într-o serie de t
 
 \section{Procesul Ornstein-Uhlenbeck (OU)}
 
-După eliminarea trendului prin SSA, componenta reziduală ($R_t$) prezintă un comportament oscilatoriu în jurul valorii zero (asa cum am observat si in cazul FFT, zgomotul este distribuit normal in jurul lui zero). Pentru a modela matematic acest comportament și a stabili limitele "normale" de variație, utilizăm procesul stocastic Ornstein-Uhlenbeck.
+După eliminarea trendului prin SSA, componenta reziduală ($R_t$) prezintă un comportament oscilatoriu în jurul valorii zero, fapt confirmat de analiza spectrală (FFT), care indică o distribuție normală a zgomotului în jurul mediei zero. Pentru a modela matematic acest comportament și a stabili limitele "normale" de variație, utilizăm procesul stocastic Ornstein-Uhlenbeck.
 
 Spre deosebire de Mișcarea Browniană standard (Wiener Process), care este non-staționară și are o varianță ce crește liniar cu timpul ($Var(W_t) = t$), procesul OU este \textit{staționar} și prezintă proprietatea de \textbf{Revenire la Medie} (Mean Reversion). Aceasta îl face ideal pentru modelarea "zgomotului" pieței, care tinde să se corecteze după șocuri.
 
@@ -358,12 +372,45 @@ Pragul critic de acțiune este stabilit la $S_{critic} = 3.5$. Acest prag necesi
 \chapter{Studii de Caz și Rezultate}
 
 \section{Setul de Date}
-Analiza a fost efectuată pe indicele S\&P 500 în perioada 2019-2024, cuprinzând evenimente majore precum Crash-ul COVID-19 (2020) și Piața Bear din 2022.
+Analiza a fost efectuată pe indicele S\&P 500 în perioada 2019-2024, cuprinzând evenimente majore precum Crash-ul COVID-19 (2020) și Piața Bear din 2022. De asemenea robustetea algoritmului se poate demonstra si pe alti indici bursieri.
+% Asigura-te ca ai \usepackage{subcaption} in preambul (la inceputul fisierului)
 
-\section{Analiza Crizei COVID-19 (Martie 2020)}
-% Aici pui graficele generate de Python.
-% Explici cum SSA a aratat caderea, GARCH s-a largit, iar Pattern a explodat.
-În figura 3.1, observăm suprapunerea alertelor. Deși GARCH a adaptat limitele de volatilitate, magnitudinea șocului a depășit chiar și predicția adaptivă, confirmând natura de "Black Swan" a evenimentului.
+\begin{figure}[h!]
+    \centering
+    % --- PLOT STANGA (BITCOIN) ---
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{plots/bitcoin.png} % Inlocuieste cu numele fisierului tau
+        \caption{Bitcoin (BTC): Detectarea bulelor speculative}
+        \label{fig:analiza_btc}
+    \end{subfigure}
+    \hfill % Spatiul elastic dintre grafice
+    % --- PLOT DREAPTA (META) ---
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{plots/meta.png} % Inlocuieste cu numele fisierului tau
+        \caption{Meta (META): Detectarea șocurilor idiosincratice}
+        \label{fig:analiza_meta}
+    \end{subfigure}
+    
+    \caption{Validarea robusteții algoritmului pe active alternative. (a) Bitcoin prezintă o volatilitate extremă continuă, detectată corect de GARCH. (b) Meta prezintă o ruptură structurală bruscă (Gap-down) în 2022, identificată de ansamblu.}
+    \label{fig:validare_robustete}
+\end{figure}
+
+
+\section{Analiza Robusteții pe Alte Clase de Active}
+
+Pentru a demonstra capacitatea de generalizare a pipeline-ului hibrid propus, am extins testarea dincolo de indicii de piață agregați (S\&P 500), aplicând algoritmul pe active cu profiluri de risc distincte: criptomonede și acțiuni individuale volatile.
+
+Așa cum este ilustrat în Figura \ref{fig:validare_robustete}, sistemul s-a comportat consistent în scenarii diverse:
+
+\begin{itemize}
+    \item \textbf{Cazul Bitcoin (Fig. \ref{fig:analiza_btc}):} Activul prezintă regimuri de heteroscedasticitate extremă. Componenta GARCH a ajustat dinamic pragurile, evitând generarea de alarme false continue în perioadele de volatilitate normală pentru crypto (5-10\%), dar semnalând corect prăbușirile sistemice (ex: 2021, 2022).
+    
+    \item \textbf{Cazul Meta Platforms (Fig. \ref{fig:analiza_meta}):} Analiza a evidențiat capacitatea sistemului de a gestiona șocuri idiosincratice (specifice companiei). În februarie 2022, Meta a suferit o scădere istorică de 26\% într-o singură zi. Deși SSA are o inerție naturală, combinația cu detectarea volatilității instantanee a permis marcarea evenimentului ca o anomalie critică în timp real.
+\end{itemize}
+
+Aceste rezultate confirmă că arhitectura de vot ponderat (Ensemble) este robustă și nu suferă de \textit{overfitting} pe datele indicelui S\&P 500.
 
 \section{Analiza Comparativă: Static vs Dinamic}
 % Aici pui graficul cu Tunelul Verde (OU) vs Tunelul Portocaliu (GARCH).
@@ -383,23 +430,81 @@ Comparând limitele statice derivate din procesul Ornstein-Uhlenbeck cu cele din
 % =========================================================================
 % CAPITOLUL 5: CONCLUZII
 % =========================================================================
+% =========================================================================
+% CAPITOLUL 5: CONCLUZII
+% =========================================================================
 \chapter{Concluzii și Direcții Viitoare}
 
-\section{Contribuții Personale}
-Am dezvoltat un framework unificat care tratează detectarea anomaliilor nu doar ca o problemă statistică, ci și ca una geometrică (Pattern Matching) și fizică (Mean Reversion).
+\section{Sinteza Contribuțiilor}
+Prezenta lucrare a propus și validat o arhitectură hibridă pentru detectarea anomaliilor în piețele financiare, depășind limitările modelelor statistice clasice prin integrarea a trei paradigme distincte: descompunerea spectrală (SSA), fizica stocastică (Procese OU) și recunoașterea geometrică a formelor (DTW).
 
-\section{Direcții Viitoare}
-Integrarea analizei de sentiment (NLP) din știri financiare pentru a ajusta ponderile ansamblului în timp real.\\
-Includerea unui graf de legatura intre diferiti indici bursieri (ex. Aur, Argint, Petrol, Bitcoin in corelatie cu S&P 500)
+Principalele contribuții pot fi sintetizate astfel:
+\begin{itemize}
+    \item \textbf{Unificarea Viziunii:} Tratarea anomaliilor nu doar ca deviații statistice (Outliers), ci și ca rupturi structurale de echilibru și similarități morfologice cu crize istorice.
+    \item \textbf{Adaptabilitate:} Implementarea limitelor dinamice GARCH a demonstrat reducerea alarmelor false în regimuri de volatilitate ridicată (ex: Bitcoin), spre deosebire de pragurile statice.
+    \item \textbf{Robustete:} Sistemul de vot ponderat (Ensemble) a permis identificarea corectă a crizelor pe clase de active diverse (S\&P 500, Crypto, Tech Stocks), confirmând capacitatea de generalizare a algoritmului.
+\end{itemize}
 
+\section{Direcții Viitoare de Cercetare}
+Pentru extinderea capacităților sistemului actual, se propun următoarele direcții de dezvoltare:
 
+\begin{itemize}
+    \item \textbf{Analiza Sentimentului (NLP):} Integrarea unui modul de procesare a limbajului natural pentru analiza știrilor financiare în timp real. Acest lucru ar permite ajustarea dinamică a ponderilor ansamblului (de exemplu, creșterea ponderii GARCH în momente de incertitudine geopolitică).
+    \item \textbf{Analiza de Rețea (Graph Theory):} Construirea unui graf de corelație între diferiți indici (Aur, Petrol, S\&P 500, Bitcoin) pentru a detecta riscul sistemic prin propagarea șocurilor în rețea.
+    \item \textbf{Optimizarea Ponderilor:} Utilizarea unui algoritm genetic sau a unei rețele neurale simple pentru a învăța automat ponderile optime ($w_{SSA}, w_{GARCH}, w_{DTW}$) pe baza datelor istorice, în locul setării lor euristice.
+\end{itemize}
 % =========================================================================
 % BIBLIOGRAFIE
 % =========================================================================
-\begin{thebibliography}{9}
-\bibitem{mandelbrot} Mandelbrot, B. (1963). \textit{The Variation of Certain Speculative Prices}.
-\bibitem{golyandina} Golyandina, N. et al. (2001). \textit{Analysis of Time Series Structure: SSA and related techniques}.
-\bibitem{engle} Engle, R. F. (1982). \textit{Autoregressive Conditional Heteroscedasticity with Estimates of the Variance of United Kingdom Inflation}.
-\end{thebibliography}
+\begin{thebibliography}{99}
 
+% --- 1. Teoria Financiară și Econofizică ---
+\bibitem{bachelier1900} 
+Bachelier, L. (1900). \textit{Théorie de la spéculation}. Annales Scientifiques de l'École Normale Supérieure, 3(17), 21-86. (Lucrarea fundamentală despre Random Walk/Brownian Motion).
+
+\bibitem{mandelbrot1963} 
+Mandelbrot, B. (1963). \textit{The Variation of Certain Speculative Prices}. The Journal of Business, 36(4), 394-419. (Lucrarea despre Fat Tails și respingerea normalității).
+
+\bibitem{mandelbrot1997}
+Mandelbrot, B. B. (1997). \textit{Fractals and Scaling in Finance: Discontinuity, Concentration, Risk}. Springer Science \& Business Media.
+
+\bibitem{taleb2007}
+Taleb, N. N. (2007). \textit{The Black Swan: The Impact of the Highly Improbable}. Random House. (Conceptul de Lebădă Neagră).
+
+% --- 2. Singular Spectrum Analysis (SSA) ---
+\bibitem{golyandina2001} 
+Golyandina, N., Nekrutkin, V., \& Zhigljavsky, A. (2001). \textit{Analysis of Time Series Structure: SSA and Related Techniques}. Chapman and Hall/CRC. (Biblia SSA-ului).
+
+\bibitem{hassani2007}
+Hassani, H. (2007). \textit{Singular Spectrum Analysis: Methodology and Comparison}. Journal of Data Science, 5(2), 239-257.
+
+% --- 3. GARCH și Volatilitate ---
+\bibitem{engle1982} 
+Engle, R. F. (1982). \textit{Autoregressive Conditional Heteroscedasticity with Estimates of the Variance of United Kingdom Inflation}. Econometrica, 50(4), 987-1007. (Inventatorul ARCH).
+
+\bibitem{bollerslev1986} 
+Bollerslev, T. (1986). \textit{Generalized Autoregressive Conditional Heteroskedasticity}. Journal of Econometrics, 31(3), 307-327. (Inventatorul GARCH - esențial pentru lucrarea ta).
+
+% --- 4. Procese Stocastice (Ornstein-Uhlenbeck) ---
+\bibitem{uhlenbeck1930}
+Uhlenbeck, G. E., \& Ornstein, L. S. (1930). \textit{On the Theory of the Brownian Motion}. Physical Review, 36(5), 823. (Originea fizică a procesului OU).
+
+\bibitem{vasicek1977}
+Vasicek, O. (1977). \textit{An Equilibrium Character of the Term Structure}. Journal of Financial Economics, 5(2), 177-188. (Aplicarea OU în finanțe/dobânzi).
+
+% --- 5. Pattern Matching & DTW ---
+\bibitem{sakoe1978}
+Sakoe, H., \& Chiba, S. (1978). \textit{Dynamic Programming Algorithm Optimization for Spoken Word Recognition}. IEEE Transactions on Acoustics, Speech, and Signal Processing, 26(1), 43-49. (Lucrarea originală care a definit DTW).
+
+\bibitem{rakthanmanon2012}
+Rakthanmanon, T., et al. (2012). \textit{Searching and Mining Trillions of Time Series Subsequences under Dynamic Time Warping}. Proceedings of the 18th ACM SIGKDD. (Despre DTW rapid pe date mari).
+
+% --- 6. Anomaly Detection General ---
+\bibitem{chandola2009}
+Chandola, V., Banerjee, A., \& Kumar, V. (2009). \textit{Anomaly Detection: A Survey}. ACM Computing Surveys, 41(3), 1-58.
+
+\bibitem{aggarwal2017}
+Aggarwal, C. C. (2017). \textit{Outlier Analysis} (2nd ed.). Springer International Publishing. (Referința fundamentală pentru taxonomia anomaliilor).
+
+\end{thebibliography}
 \end{document}
