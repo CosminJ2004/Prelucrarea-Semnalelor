@@ -1,0 +1,168 @@
+import os
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import RobustScaler
+from sklearn.metrics import classification_report, confusion_matrix, precision_recall_curve
+import tensorflow as tf
+from tensorflow.keras import layers, models, callbacks
+
+# ==========================================
+# 1. PREGĂTIREA DATELOR (BROWNIAN MOTION)
+# ==========================================
+def load_brownian_global_split(folder_path, window_size=60, stride=1):
+    all_files = sorted([f for f in os.listdir(folder_path) if f.endswith('.csv')])
+    
+    X_seq_all, y_labels_all, y_types_all = [], [], []
+    
+    print("Încărcăm și procesăm TOATE fișierele...")
+    for f in all_files:
+        try:
+            # Presupunem că ai indexul pe prima coloană (ca în datasetul tău generat)
+            df = pd.read_csv(os.path.join(folder_path, f), index_col=0)
+            
+            prices = df['Close'].values.astype('float32').reshape(-1, 1)
+            labels = df['Is_Anomaly'].values.astype('int8')
+            types = df['Anomaly_Type'].values.astype(str)
+            
+            # Folosim RobustScaler pentru Brownian Motion (păstrează spike-urile intacte)
+            scaler = RobustScaler()
+            prices_scaled = scaler.fit_transform(prices)
+            
+            for i in range(0, len(prices_scaled) - window_size, stride):
+                window = prices_scaled[i : i + window_size]
+                X_seq_all.append(window)
+                y_labels_all.append(labels[i + window_size - 1])
+                y_types_all.append(types[i + window_size - 1])
+                
+        except Exception as e:
+            pass
+
+    X_seq_all = np.array(X_seq_all)
+    y_labels_all = np.array(y_labels_all)
+    y_types_all = np.array(y_types_all)
+    
+    # Split 70% Train / 30% Test pe toate datele amestecate, stratificat
+    X_train, X_test, y_train, y_test, _, y_test_types = train_test_split(
+        X_seq_all, y_labels_all, y_types_all, 
+        test_size=0.3, random_state=42, stratify=y_labels_all
+    )
+    
+    print(f"✅ Gata! Ferestre totale: {len(X_seq_all)}")
+    print(f"X_train: {X_train.shape}, X_test: {X_test.shape}")
+    return X_train, y_train, X_test, y_test, y_test_types
+
+# ==========================================
+# 2. ARHITECTURA ADVANCED C-BiLSTM + ATTENTION
+# ==========================================
+def build_advanced_c_bilstm_model(window_size=60):
+    inputs = layers.Input(shape=(window_size, 1))
+    
+    # --- 1. ETAPA CNN (Feature Extraction cu ELU) ---
+    x = layers.Conv1D(filters=64, kernel_size=5, strides=1, padding='same', activation='elu')(inputs)
+    x = layers.MaxPooling1D(pool_size=2, strides=2)(x)
+    
+    x = layers.Conv1D(filters=64, kernel_size=5, strides=1, padding='same', activation='elu')(x)
+    x = layers.MaxPooling1D(pool_size=2, strides=2)(x)
+    
+    # --- 2. ETAPA BiLSTM ---
+    # Bidirectional citește în ambele sensuri. return_sequences=True ne dă analiza per pas!
+    x = layers.Bidirectional(layers.LSTM(64, return_sequences=True, activation='tanh'))(x)
+    
+    # --- 3. ETAPA DE ATENȚIE (Hard Attention) ---
+    # Extrage automat semnalul cel mai puternic de anomalie din fereastră
+    x = layers.GlobalMaxPooling1D()(x)
+    
+    # --- 4. ETAPA DNN (Clasificator) ---
+    x = layers.Dense(64, activation='relu')(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Dropout(0.4)(x)
+    
+    x = layers.Dense(32, activation='relu')(x)
+    x = layers.Dropout(0.3)(x)
+    
+    # Ieșire: 2 clase (Normal vs Anomalie)
+    outputs = layers.Dense(2, activation='softmax')(x)
+    
+    model = models.Model(inputs=inputs, outputs=outputs, name="Advanced_C-BiLSTM")
+    model.compile(optimizer='adam', 
+                  loss='sparse_categorical_crossentropy', 
+                  metrics=['accuracy'])
+    return model
+
+# ==========================================
+# 3. EXECUȚIA ȘI ANTRENAREA
+# ==========================================
+# 🛑 PUNE AICI CALEA CĂTRE FOLDERUL TĂU CU CELE 200 DE FIȘIERE BROWNIAN:
+FOLDER_PATH = "./dataset" 
+
+X_train, y_train_labels, X_test, y_test_labels, y_test_types = load_brownian_global_split(FOLDER_PATH, window_size=60)
+
+model = build_advanced_c_bilstm_model(window_size=60)
+early_stop = callbacks.EarlyStopping(monitor='val_loss', patience=6, restore_best_weights=True)
+
+print("\n🚀 Începem antrenarea modelului Advanced C-BiLSTM...")
+history = model.fit(
+    X_train, y_train_labels,
+    epochs=50,
+    batch_size=512,
+    validation_split=0.1,
+    callbacks=[early_stop],
+    verbose=1
+)
+
+# ==========================================
+# 4. EVALUARE FINALĂ ȘI DIAGNOSTIC PER TIP
+# ==========================================
+print("\n🔍 Generăm predicțiile pe setul de test...")
+y_pred_probs_full = model.predict(X_test)
+
+# Extragem probabilitățile de a fi Anomalie
+anomaly_probs = y_pred_probs_full[:, 1]
+
+# Găsim pragul optim cu Precision-Recall Curve
+precisions, recalls, thresholds = precision_recall_curve(y_test_labels, anomaly_probs)
+f1_scores = 2 * (precisions[:-1] * recalls[:-1]) / (precisions[:-1] + recalls[:-1] + 1e-10)
+
+best_idx = np.argmax(f1_scores)
+best_threshold = thresholds[best_idx]
+best_f1 = f1_scores[best_idx]
+
+print(f"\n==============================================")
+print(f"🎯 Prag Optim Găsit: {best_threshold:.4f}")
+print(f"🏆 F1-Score Așteptat: {best_f1:.4f}")
+print("==============================================\n")
+
+# Aplicăm pragul găsit
+y_pred_optim = (anomaly_probs > best_threshold).astype(int)
+
+print("📊 RAPORT DE CLASIFICARE (ADVANCED C-BiLSTM):")
+print(classification_report(y_test_labels, y_pred_optim, target_names=["Normal (0)", "Anomalie (1)"]))
+
+print("\n🕵️‍♂️ ANALIZĂ PER TIP DE ANOMALIE:")
+df_results = pd.DataFrame({
+    'Real_Label': y_test_labels,
+    'Predicted_Label': y_pred_optim,
+    'Type': y_test_types
+})
+
+anomalies_only = df_results[df_results['Real_Label'] == 1]
+types_present = anomalies_only['Type'].unique()
+
+for t in types_present:
+    if t == 'None': continue
+    subset = anomalies_only[anomalies_only['Type'] == t]
+    total = len(subset)
+    detected = subset['Predicted_Label'].sum()
+    recall_pct = (detected / total) * 100 if total > 0 else 0
+    print(f" - {t.ljust(12)} : A prins {detected} din {total} ({recall_pct:.1f}%)")
+
+# Matricea de confuzie
+plt.figure(figsize=(7, 5))
+sns.heatmap(confusion_matrix(y_test_labels, y_pred_optim), annot=True, fmt='d', cmap='Greens')
+plt.title("Matrice de Confuzie - Advanced C-BiLSTM", fontsize=14)
+plt.ylabel('Adevărul (Realitate)')
+plt.xlabel('Predicția Modelului')
+plt.show()

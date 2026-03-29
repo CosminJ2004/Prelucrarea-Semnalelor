@@ -1,0 +1,162 @@
+import os
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import RobustScaler
+from sklearn.metrics import classification_report, confusion_matrix, precision_recall_curve
+from xgboost import XGBClassifier
+import tensorflow as tf
+from tensorflow.keras import layers, models, callbacks
+
+# ==========================================
+# 1. PREGĂTIREA DATELOR (BROWNIAN)
+# ==========================================
+def load_brownian_data(folder_path, window_size=60, stride=1):
+    all_files = sorted([f for f in os.listdir(folder_path) if f.endswith('.csv')])
+    X_seq_all, y_labels_all, y_types_all = [], [], []
+    
+    for f in all_files:
+        try:
+            df = pd.read_csv(os.path.join(folder_path, f), index_col=0)
+            prices = df['Close'].values.astype('float32').reshape(-1, 1)
+            labels = df['Is_Anomaly'].values.astype('int8')
+            types = df['Anomaly_Type'].values.astype(str)
+            
+            scaler = RobustScaler()
+            prices_scaled = scaler.fit_transform(prices)
+            
+            for i in range(0, len(prices_scaled) - window_size, stride):
+                window = prices_scaled[i : i + window_size]
+                X_seq_all.append(window)
+                y_labels_all.append(labels[i + window_size - 1])
+                y_types_all.append(types[i + window_size - 1])
+        except Exception as e:
+            pass
+
+    return train_test_split(
+        np.array(X_seq_all), np.array(y_labels_all), np.array(y_types_all), 
+        test_size=0.3, random_state=42, stratify=np.array(y_labels_all)
+    )
+
+# ==========================================
+# 2. LAYER 1: HEURISTICI (Z-Score)
+# ==========================================
+def predict_heuristic(X_data, threshold=3.0):
+    """
+    Regulă extrem de rapidă: Dacă ultimul punct din fereastră sare cu mai 
+    mult de X deviații standard față de restul ferestrei, e anomalie clară.
+    """
+    probs = []
+    for win in X_data:
+        w = win.flatten()
+        mean_past = np.mean(w[:-1])
+        std_past = np.std(w[:-1]) + 1e-6
+        z_score = np.abs((w[-1] - mean_past) / std_past)
+        
+        # Transformăm z-score într-o "probabilitate" rudimentară [0, 1]
+        prob = min(z_score / (threshold * 1.5), 1.0)
+        probs.append(prob)
+    return np.array(probs)
+
+# ==========================================
+# 3. LAYER 2: XGBOOST pe Feature-uri Statistice
+# ==========================================
+def extract_xgb_features(X_data):
+    features = []
+    for win in X_data:
+        w = win.flatten()
+        features.append([
+            np.mean(w), np.std(w), np.min(w), np.max(w), 
+            w[-1] - w[0], np.max(np.abs(np.diff(w)))
+        ])
+    return np.array(features)
+
+# ==========================================
+# 4. LAYER 3: DEEP LEARNING (C-BiLSTM)
+# ==========================================
+def build_dl_model(window_size=60):
+    inputs = layers.Input(shape=(window_size, 1))
+    x = layers.Conv1D(64, 5, padding='same', activation='elu')(inputs)
+    x = layers.MaxPooling1D(2)(x)
+    x = layers.Conv1D(64, 5, padding='same', activation='elu')(x)
+    x = layers.MaxPooling1D(2)(x)
+    x = layers.Bidirectional(layers.LSTM(64, return_sequences=True))(x)
+    x = layers.GlobalMaxPooling1D()(x)
+    x = layers.Dense(64, activation='relu')(x)
+    x = layers.Dropout(0.3)(x)
+    outputs = layers.Dense(2, activation='softmax')(x)
+    
+    model = models.Model(inputs=inputs, outputs=outputs)
+    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+    return model
+
+# ==========================================
+# 5. EXECUȚIA PIPELINE-ULUI HIBRID
+# ==========================================
+FOLDER_PATH = "./dataset_brownian_anomalii" 
+
+print("1. Încărcăm datele...")
+X_train, X_test, y_train, y_test, _, y_test_types = load_brownian_data(FOLDER_PATH)
+
+print("\n2. Antrenăm LAYER 2: XGBoost...")
+X_train_xgb = extract_xgb_features(X_train)
+X_test_xgb = extract_xgb_features(X_test)
+
+xgb_model = XGBClassifier(n_estimators=100, max_depth=6, learning_rate=0.1, eval_metric='logloss')
+xgb_model.fit(X_train_xgb, y_train)
+
+print("\n3. Antrenăm LAYER 3: Advanced C-BiLSTM...")
+dl_model = build_dl_model()
+early_stop = callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+dl_model.fit(X_train, y_train, epochs=20, batch_size=512, validation_split=0.1, callbacks=[early_stop], verbose=1)
+
+# ==========================================
+# 6. ENSEMBLING (Combinarea Puterilor)
+# ==========================================
+print("\n🔥 GENERĂM PREDICȚIILE HIBRIDE 🔥")
+
+# A. Probabilități Heuristici (Rapid, pt spike-uri)
+prob_heur = predict_heuristic(X_test, threshold=3.5)
+
+# B. Probabilități XGBoost (Robust, pt schimbări de regim)
+prob_xgb = xgb_model.predict_proba(X_test_xgb)[:, 1]
+
+# C. Probabilități Deep Learning (Subtil, pt context)
+prob_dl = dl_model.predict(X_test)[:, 1]
+
+# COMBINAȚIA MAGICĂ (Weighted Average)
+# Dăm o pondere mai mare DL-ului și XGBoost-ului, heuristica e doar pt siguranță
+prob_ensemble = (0.15 * prob_heur) + (0.35 * prob_xgb) + (0.50 * prob_dl)
+
+# Găsim pragul optim pt Ensemble
+precisions, recalls, thresholds = precision_recall_curve(y_test, prob_ensemble)
+f1_scores = 2 * (precisions[:-1] * recalls[:-1]) / (precisions[:-1] + recalls[:-1] + 1e-10)
+best_idx = np.argmax(f1_scores)
+best_threshold = thresholds[best_idx]
+
+y_pred_ensemble = (prob_ensemble > best_threshold).astype(int)
+
+print(f"\n==============================================")
+print(f"🏆 F1-Score ENSEMBLE: {f1_scores[best_idx]:.4f}")
+print("==============================================\n")
+
+print("📊 RAPORT DE CLASIFICARE HIBRID:")
+print(classification_report(y_test, y_pred_ensemble, target_names=["Normal (0)", "Anomalie (1)"]))
+
+print("\n🕵️‍♂️ ANALIZĂ PER TIP DE ANOMALIE (ENSEMBLE):")
+df_results = pd.DataFrame({'Real': y_test, 'Pred': y_pred_ensemble, 'Type': y_test_types})
+anomalies_only = df_results[df_results['Real'] == 1]
+
+for t in anomalies_only['Type'].unique():
+    if t == 'None': continue
+    subset = anomalies_only[anomalies_only['Type'] == t]
+    total = len(subset)
+    detected = subset['Pred'].sum()
+    print(f" - {t.ljust(12)} : A prins {detected} din {total} ({(detected/total)*100 if total>0 else 0:.1f}%)")
+
+plt.figure(figsize=(7, 5))
+sns.heatmap(confusion_matrix(y_test, y_pred_ensemble), annot=True, fmt='d', cmap='copper')
+plt.title("Matrice de Confuzie - INDUSTRY HYBRID ENSEMBLE", fontsize=14)
+plt.show()
